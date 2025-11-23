@@ -1,0 +1,5 @@
+database: multi_label_toxicity_classification
+
+tables:
+  train_data: train
+  test_data: test

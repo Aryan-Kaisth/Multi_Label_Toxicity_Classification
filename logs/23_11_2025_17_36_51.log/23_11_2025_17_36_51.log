@@ -1,0 +1,16 @@
+[2025-11-23 17:36:51,425] 47 root - INFO - [INIT] Ensured data ingestion directory: artifacts\data_ingestion
+[2025-11-23 17:36:51,425] 126 root - INFO - === DATA INGESTION STARTED ===
+[2025-11-23 17:36:51,425] 75 root - INFO - [DB] Fetching data from table: train
+[2025-11-23 17:36:52,809] 82 root - INFO - [DB] Data fetched \u2192 rows: 159571, columns: 8
+[2025-11-23 17:36:52,817] 48 root - INFO - Entered the save_csv_file method of main_utils
+[2025-11-23 17:36:53,701] 51 root - INFO - Exited the save_csv_file method of main_utils
+[2025-11-23 17:36:53,701] 94 root - INFO - [SAVE] Raw data stored at artifacts\data_ingestion\raw.csv
+[2025-11-23 17:36:53,702] 100 root - INFO - [SPLIT] Performing train-test split (80-20)...
+[2025-11-23 17:36:53,720] 104 root - INFO - [SPLIT] Train: (127656, 8), Test: (31915, 8)
+[2025-11-23 17:36:53,721] 48 root - INFO - Entered the save_csv_file method of main_utils
+[2025-11-23 17:36:54,444] 51 root - INFO - Exited the save_csv_file method of main_utils
+[2025-11-23 17:36:54,444] 112 root - INFO - [SAVE] Train data saved to artifacts\data_ingestion\train.csv
+[2025-11-23 17:36:54,444] 48 root - INFO - Entered the save_csv_file method of main_utils
+[2025-11-23 17:36:54,621] 51 root - INFO - Exited the save_csv_file method of main_utils
+[2025-11-23 17:36:54,621] 115 root - INFO - [SAVE] Test data saved to artifacts\data_ingestion\test.csv
+[2025-11-23 17:36:54,621] 135 root - INFO - === DATA INGESTION COMPLETED SUCCESSFULLY ===
