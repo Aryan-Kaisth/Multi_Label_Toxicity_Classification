@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,17 +15,16 @@
 
     <header class="project-title glass">
       <h1>Multi-Label Toxicity Classification</h1>
-      <p class="subtitle">Enter text below to analyze its toxicity levels across multiple categories.</p>
+      <p class="subtitle">Enter text below to analyze toxicity across multiple categories.</p>
     </header>
 
     <section class="layout">
 
       <!-- Input Section -->
       <form class="card glass input-card" onsubmit="event.preventDefault(); analyzeText();">
-        
-        <textarea 
-          id="userText" 
-          placeholder="Type or paste text here..." 
+
+        <textarea id="userText"
+          placeholder="Type or paste text here..."
           maxlength="10000"></textarea>
 
         <div class="controls">
@@ -32,7 +32,7 @@
           <button type="button" class="btn ghost" id="clearBtn">Clear</button>
           <div class="spacer"></div>
           <div class="stats">
-            <span id="charCount">0</span> chars · 
+            <span id="charCount">0</span> chars ·
             <span id="wordCount">0</span> words
           </div>
         </div>
@@ -74,7 +74,8 @@
     userText.addEventListener("input", updateStats);
     updateStats();
 
-    // Mock Prediction API
+
+    // 🔥 REAL Prediction API call to FastAPI
     async function analyzeText() {
       const text = userText.value.trim();
       if (!text) {
@@ -84,26 +85,31 @@
 
       predictionArea.textContent = "Analyzing...";
 
-      // Example delay
-      await new Promise(r => setTimeout(r, 800));
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
 
-      // Example predictions (replace with backend)
-      const exampleOutput = {
-        toxic: "0.91",
-        severe_toxic: "0.12",
-        obscene: "0.73",
-        threat: "0.05",
-        insult: "0.88",
-        identity_hate: "0.22"
-      };
+        const output = await response.json();
 
-      let html = "<ul class='pred-list'>";
-      for (const [label, score] of Object.entries(exampleOutput)) {
-        html += `<li><strong>${label}</strong>: ${score}</li>`;
+        if (output.error) {
+          predictionArea.textContent = "Error: " + output.error;
+          return;
+        }
+
+        let html = "<ul class='pred-list'>";
+        for (const [label, score] of Object.entries(output)) {
+          html += `<li><strong>${label}</strong>: ${score.toFixed(4)}</li>`;
+        }
+        html += "</ul>";
+
+        predictionArea.innerHTML = html;
+
+      } catch (err) {
+        predictionArea.textContent = "An error occurred. Please try again.";
       }
-      html += "</ul>";
-
-      predictionArea.innerHTML = html;
     }
 
     document.getElementById("predictBtn").onclick = analyzeText;
@@ -114,5 +120,6 @@
       updateStats();
     };
   </script>
+
 </body>
 </html>

@@ -1,93 +1,304 @@
 # src/components/model_trainer.py
-import os, sys
-from dataclasses import dataclass
-from src.logger import logging
-from src.exception import CustomException
-from src.utils.main_utils import save_object
-from keras.layers import LSTM, Dense, BatchNormalization, LayerNormalization, Dropout, Activation, Input
-from keras.optimizers import Nadam
-from keras.models import Sequential
-import pandas as pd
+
+import os
+import sys
 import numpy as np
 import gensim.downloader as api
+from dataclasses import dataclass
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2" 
+from src.logger import logging
+from src.exception import CustomException
+from src.utils.main_utils import save_object  # if unused, you can remove
+
+from tensorflow import keras
+from keras.models import Sequential
+from keras.layers import (
+    TextVectorization,
+    Embedding,
+    Bidirectional,
+    LSTM,
+    Dense,
+    BatchNormalization,
+    LayerNormalization,
+    Dropout,
+    Activation
+)
+from keras.optimizers import Nadam
+from keras_cv.losses import FocalLoss  # type: ignore
+
 
 @dataclass
 class ModelTrainerConfig:
-    model_file_path: str = os.path.join("artifacts", "model_trainer", "gru.keras")
+    """
+    Configuration for model training artifacts.
+    """
+    model_file_path: str = os.path.join(
+        "artifacts", "model_trainer", "bilstm_model.keras"
+    )
+
 
 class ModelTrainer:
-    def __init__(self):
-        self.config = ModelTrainerConfig()
-        os.makedirs(os.path.dirname(self.config.model_file_path), exist_ok=True)
-        logging.info(f"ModelTrainer initialized. Model will be saved at {self.config.model_file_path}")
+    """
+    Handles the full deep-learning training workflow:
+    - Build TextVectorizer
+    - Load GloVe embeddings
+    - Construct Embedding Matrix
+    - Build BiLSTM Model
+    - Compile & Train Model with Focal Loss
+    - Save Model
+    """
 
-    def initiate_model_trainer(self, X_train, X_test, y_train, y_test):
+    def __init__(self, config: ModelTrainerConfig = ModelTrainerConfig()):
+        self._config = config
+
+        try:
+            os.makedirs(os.path.dirname(self._config.model_file_path), exist_ok=True)
+            logging.info(
+                f"[INIT] ModelTrainer initialized. "
+                f"Model will be saved at: {self._config.model_file_path}"
+            )
+        except Exception as e:
+            raise CustomException(e, sys)
+
+    def _build_vectorizer(self, X_train):
         """
-        Trains a LSTM Deep learning model and evaluates it.
-        Saves the trained model as a keras file.
+        Create and adapt the TextVectorization layer.
+
+        Parameters
+        ----------
+        X_train : array-like
+            Training text data.
+
+        Returns
+        -------
+        TextVectorization
+            Adapted text vectorizer.
         """
         try:
-            logging.info("Model training started")
-            from keras.layers import TextVectorization, Embedding
+            logging.info("[BUILD] Initializing TextVectorization layer...")
 
             vectorizer = TextVectorization(
-                max_tokens=50000,
-                output_sequence_length=70,
-                output_mode='int'
+                max_tokens=50_000,
+                output_sequence_length=120,
+                output_mode="int",
             )
             vectorizer.adapt(X_train)
 
-            glove200_model = api.load('glove-twitter-200')
+            logging.info("[BUILD] TextVectorization layer built & adapted.")
+            return vectorizer
+
+        except Exception as e:
+            logging.error("[ERROR] Failed to build TextVectorizer.")
+            raise CustomException(e, sys)
+
+    def _load_glove(self):
+        """
+        Load GloVe pretrained word embeddings.
+
+        Returns
+        -------
+        gensim.models.KeyedVectors
+            Loaded GloVe embeddings.
+        """
+        try:
+            logging.info("[LOAD] Loading GloVe embeddings: glove-wiki-gigaword-100")
+            glove_model = api.load("glove-wiki-gigaword-100")
+            logging.info("[LOAD] GloVe embeddings loaded successfully.")
+            return glove_model
+
+        except Exception as e:
+            logging.error("[ERROR] Failed to load GloVe embeddings.")
+            raise CustomException(e, sys)
+
+    def _build_embedding_matrix(self, vectorizer, glove_model):
+        """
+        Create embedding matrix aligned to vectorizer vocabulary.
+
+        Parameters
+        ----------
+        vectorizer : TextVectorization
+            Adapted Keras TextVectorization layer.
+        glove_model : gensim.models.KeyedVectors
+            Pretrained GloVe embeddings.
+
+        Returns
+        -------
+        np.ndarray
+            Embedding matrix of shape (vocab_size, embedding_dim).
+        """
+        try:
+            logging.info("[BUILD] Building embedding matrix...")
+
             vocab = vectorizer.get_vocabulary()
             vocab_size = len(vocab)
-            embedding_dim = glove200_model.vector_size
+            embedding_dim = glove_model.vector_size
 
-            embedding_matrix = np.zeros((vocab_size, embedding_dim))
+            word_index = {word: idx for idx, word in enumerate(vocab)}
+            embedding_matrix = np.zeros((vocab_size, embedding_dim), dtype=np.float32)
 
-            for i, word in enumerate(vocab):
-                if word in glove200_model:
-                    embedding_matrix[i] = glove200_model[word]
+            match_count = 0
+            for word, idx in word_index.items():
+                if word in glove_model.key_to_index:
+                    embedding_matrix[idx] = glove_model[word]
+                    match_count += 1
+
+            match_ratio = match_count / vocab_size if vocab_size > 0 else 0.0
+            logging.info(
+                f"[BUILD] Embedding matrix built. "
+                f"Matched {match_count}/{vocab_size} words "
+                f"({match_ratio:.2%} coverage)."
+            )
+
+            return embedding_matrix
+
+        except Exception as e:
+            logging.error("[ERROR] Failed to build embedding matrix.")
+            raise CustomException(e, sys)
+
+    def _build_model(self, vectorizer, embedding_matrix):
+        """
+        Construct the BiLSTM model architecture.
+
+        Parameters
+        ----------
+        vectorizer : TextVectorization
+            Adapted text vectorizer layer.
+        embedding_matrix : np.ndarray
+            Pretrained embedding matrix.
+
+        Returns
+        -------
+        keras.Model
+            Compiled BiLSTM model.
+        """
+        try:
+            logging.info("[BUILD] Constructing BiLSTM model...")
+
+            vocab_size, embedding_dim = embedding_matrix.shape
 
             embedding_layer = Embedding(
                 input_dim=vocab_size,
                 output_dim=embedding_dim,
                 weights=[embedding_matrix],
                 trainable=True,
-                mask_zero=True
+                mask_zero=True,
+                name="pretrained_embedding",
             )
-#------------------------------------------------------------------------------
-            model = Sequential(name='aryan_gru')
+
+            model = Sequential(name="aryan_bilstm_1")
             model.add(vectorizer)
             model.add(embedding_layer)
-            model.add(LSTM(units=64))
-            model.add(Activation('tanh'))
-            model.add(LayerNormalization())
-            model.add(Dense(32, kernel_initializer='he_normal'))
-            model.add(Activation('relu'))
-            model.add(BatchNormalization())
-            model.add(Dropout(0.8))
-            model.add(Dense(16, kernel_initializer='he_normal'))
-            model.add(Activation('relu'))
-            model.add(BatchNormalization())
-            model.add(Dense(units=1, activation='sigmoid'))
-            logging.info(f"Summary of the Model: {model.summary(show_trainable=True, line_length=115)}")
 
-            model.compile(optimizer=Nadam(), loss='binary_crossentropy', metrics=['accuracy'])
-            model.fit(X_train, y_train, batch_size=512, epochs=10, validation_split=0.2)
-            accuracy = model.evaluate(X_test, y_test)
-            logging.info(f"Model accuracy and error: {accuracy}")
-            
-            # Save model
-            model.save(self.config.model_file_path)
-            logging.info(f"Trained model saved at: {self.config.model_file_path}")
-            
-            logging.info("Model training Completed")
+            # Recurrent backbone
+            model.add(
+                Bidirectional(
+                    LSTM(128, return_sequences=False),
+                    name="bilstm_1"
+                )
+            )
+            model.add(LayerNormalization(name="layer_norm_1"))
+
+            # Dense stack
+            model.add(Dense(64, kernel_initializer="he_normal", name="dense_1"))
+            model.add(BatchNormalization())
+            model.add(Activation("relu"))
+            model.add(Dropout(0.5))
+
+            model.add(Dense(32, kernel_initializer="he_normal", name="dense_2"))
+            model.add(BatchNormalization())
+            model.add(Activation("relu"))
+            model.add(Dropout(0.3))
+
+            # Output layer (6 labels)
+            model.add(Dense(units=6, activation="sigmoid", name="output"))
+
+            model.summary(print_fn=lambda x: logging.info(x))
+            logging.info("[BUILD] BiLSTM model constructed.")
             return model
 
         except Exception as e:
-            logging.error("Error in model training")
+            logging.error("[ERROR] Failed to build BiLSTM model.")
             raise CustomException(e, sys)
-        
+
+    def initiate_model_trainer(self, X_train, X_test, y_train, y_test):
+        """
+        Run the full model training pipeline.
+
+        Steps
+        -----
+        - Build text vectorizer
+        - Load GloVe embeddings and build embedding matrix
+        - Build BiLSTM model
+        - Compile with Focal Loss
+        - Train and validate
+        - Save trained model
+
+        Parameters
+        ----------
+        X_train : pandas.Series or array-like
+            Training texts.
+        X_test : pandas.Series or array-like
+            Test texts (not used in training but may be used later).
+        y_train : pandas.DataFrame or array-like
+            Training labels (multi-label).
+        y_test : pandas.DataFrame or array-like
+            Test labels (multi-label).
+
+        Returns
+        -------
+        keras.Model
+            Trained Keras model.
+        """
+        try:
+            logging.info("===== MODEL TRAINING STARTED =====")
+
+            # 1. Build vectorizer
+            vectorizer = self._build_vectorizer(X_train)
+
+            # 2. Load pretrained GloVe embeddings
+            glove_model = self._load_glove()
+
+            # 3. Build embedding matrix
+            embedding_matrix = self._build_embedding_matrix(vectorizer, glove_model)
+
+            # 4. Build model
+            model = self._build_model(vectorizer, embedding_matrix)
+
+            # 5. Compile model with Focal Loss
+            loss_fn = FocalLoss(gamma=2.0, alpha=0.25)
+            model.compile(
+                optimizer=Nadam(learning_rate=3e-4),
+                loss=loss_fn,
+                metrics=[
+                    keras.metrics.AUC(multi_label=True, name="auc_roc"),
+                    keras.metrics.Precision(name="precision"),
+                    keras.metrics.Recall(name="recall"),
+                ],
+            )
+
+            logging.info("[TRAIN] Starting model.fit()...")
+
+            model.fit(
+                X_train,
+                y_train,
+                epochs=10,
+                batch_size=128,
+                validation_split=0.2,
+                verbose=1,
+            )
+
+            # 6. Save model
+            model.save(self._config.model_file_path)
+            logging.info(
+                f"[SAVE] Model successfully saved to: {self._config.model_file_path}"
+            )
+
+            logging.info("===== MODEL TRAINING COMPLETED SUCCESSFULLY =====")
+            return model
+
+        except Exception as e:
+            logging.error("[FATAL] Model training failed.")
+            raise CustomException(e, sys)
 
 
 # ---- Testing ----

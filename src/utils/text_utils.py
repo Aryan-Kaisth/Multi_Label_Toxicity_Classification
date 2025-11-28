@@ -4,18 +4,17 @@ import contractions
 import unicodedata
 import emoji
 import spacy
-from src.logger import logging
 from src.exception import CustomException
 
 
 def to_lowercase(text: str) -> str:
     """
-    Convert the input text to lowercase.
+    Convert text to lowercase.
 
     Parameters
     ----------
     text : str
-        Input text to convert.
+        Input text.
 
     Returns
     -------
@@ -28,27 +27,24 @@ def to_lowercase(text: str) -> str:
         If the conversion fails.
     """
     try:
-        logging.info("[TEXT] Converting text to lowercase.")
         return text.lower()
-
     except Exception as e:
-        logging.error("[TEXT] Lowercase conversion failed.")
         raise CustomException(e, sys)
 
 
 def remove_urls(text: str) -> str:
     """
-    Remove URLs from the input text using a regular expression.
+    Remove URLs from text.
 
     Parameters
     ----------
     text : str
-        Input text that may contain URLs.
+        Input text containing URLs.
 
     Returns
     -------
     str
-        Text with all URLs removed.
+        Text with URLs removed.
 
     Raises
     ------
@@ -56,22 +52,19 @@ def remove_urls(text: str) -> str:
         If URL removal fails.
     """
     try:
-        logging.info("[TEXT] Removing URLs from text.")
         return re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-
     except Exception as e:
-        logging.error("[TEXT] URL removal failed.")
         raise CustomException(e, sys)
 
 
 def expand_contractions(text: str) -> str:
     """
-    Expand English contractions in the input text.
+    Expand English contractions.
 
     Parameters
     ----------
     text : str
-        Text containing contractions.
+        Input text containing contractions.
 
     Returns
     -------
@@ -84,27 +77,24 @@ def expand_contractions(text: str) -> str:
         If expansion fails.
     """
     try:
-        logging.info("[TEXT] Expanding contractions.")
         return contractions.fix(text)
-
     except Exception as e:
-        logging.error("[TEXT] Contraction expansion failed.")
         raise CustomException(e, sys)
 
 
 def remove_accents_diacritics(text: str) -> str:
     """
-    Remove accents and diacritical marks from the input text.
+    Remove accents and diacritical marks from text.
 
     Parameters
     ----------
     text : str
-        Text that may contain accented characters.
+        Input text containing diacritics.
 
     Returns
     -------
     str
-        Normalized text with accents and diacritics removed.
+        Normalized text without diacritics.
 
     Raises
     ------
@@ -112,24 +102,20 @@ def remove_accents_diacritics(text: str) -> str:
         If normalization fails.
     """
     try:
-        logging.info("[TEXT] Removing accents and diacritics.")
         text = unicodedata.normalize('NFKD', text)
-        text = ''.join([c for c in text if not unicodedata.combining(c)])
-        return text
-
+        return ''.join([c for c in text if not unicodedata.combining(c)])
     except Exception as e:
-        logging.error("[TEXT] Failed to remove accents/diacritics.")
         raise CustomException(e, sys)
 
 
 def convert_emojis(text: str) -> str:
     """
-    Convert emojis in the input text into their textual descriptions.
+    Convert emoji characters to their text descriptions.
 
     Parameters
     ----------
     text : str
-        Text containing emoji characters.
+        Input text containing emojis.
 
     Returns
     -------
@@ -142,27 +128,24 @@ def convert_emojis(text: str) -> str:
         If emoji conversion fails.
     """
     try:
-        logging.info("[TEXT] Converting emojis to text representations.")
         return emoji.demojize(text)
-
     except Exception as e:
-        logging.error("[TEXT] Emoji conversion failed.")
         raise CustomException(e, sys)
 
 
 def remove_mentions(text: str) -> str:
     """
-    Remove @mentions from the input text and normalize spacing.
+    Remove @mentions from text.
 
     Parameters
     ----------
     text : str
-        Input text containing @mentions.
+        Input text containing mentions.
 
     Returns
     -------
     str
-        Text with all @mentions removed.
+        Text with mentions removed and spacing normalized.
 
     Raises
     ------
@@ -170,72 +153,60 @@ def remove_mentions(text: str) -> str:
         If mention removal fails.
     """
     try:
-        logging.info("[TEXT] Removing @mentions.")
         text = re.sub(r'@[A-Za-z0-9_.-]+', '', text)
         return " ".join(text.split())
-
     except Exception as e:
-        logging.error("[TEXT] Mention removal failed.")
         raise CustomException(e, sys)
 
 
-def spacy_remove_punct_numbers_pipe(text_list):
-    """
-    Remove punctuation and numeric tokens from text using spaCy's pipeline.
+try:
+    nlp = spacy.load("en_core_web_sm")
+except Exception as e:
+    raise CustomException(e, sys)
 
-    This function processes text in batches using `nlp.pipe()` for improved
-    performance. Non-alphabetic tokens are removed, and remaining tokens
-    are lowercased and joined back into cleaned strings.
+
+def spacy_remove_punct_numbers_pipe(text_list: list) -> list:
+    """
+    Remove punctuation and numbers using spaCy's pipeline.
 
     Parameters
     ----------
     text_list : list of str
-        List of raw text documents.
+        List of input documents.
 
     Returns
     -------
     list of str
-        Cleaned text documents with punctuation and numbers removed.
+        Texts containing only alphabetic tokens.
 
     Raises
     ------
     CustomException
-        If spaCy processing fails.
+        If processing fails.
     """
     try:
-        logging.info("[SPACY] Removing punctuation and numbers using nlp.pipe.")
-
-        nlp = spacy.load("en_core_web_sm")
         cleaned = []
-
         for doc in nlp.pipe(text_list, batch_size=500, n_process=-1):
             tokens = [token.text.lower() for token in doc if token.is_alpha]
             cleaned.append(" ".join(tokens))
-
-        logging.info("[SPACY] Punctuation/number removal completed.")
         return cleaned
-
     except Exception as e:
-        logging.error("[SPACY] Failed during punctuation/number removal.")
         raise CustomException(e, sys)
 
 
-def spacy_lemmatize_pipe(text_list):
+def spacy_lemmatize_pipe(text_list: list) -> list:
     """
-    Lemmatize text documents using spaCy's optimized processing pipeline.
-
-    Each token is replaced with its lemma form, and the output is returned
-    as a list of lemmatized strings.
+    Lemmatize text documents using spaCy.
 
     Parameters
     ----------
     text_list : list of str
-        Input text documents to lemmatize.
+        List of input documents.
 
     Returns
     -------
     list of str
-        Lemmatized text documents.
+        Lemmatized text.
 
     Raises
     ------
@@ -243,36 +214,28 @@ def spacy_lemmatize_pipe(text_list):
         If lemmatization fails.
     """
     try:
-        logging.info("[SPACY] Lemmatizing text using nlp.pipe.")
-
-        nlp = spacy.load("en_core_web_sm")
         lemmatized = []
-
         for doc in nlp.pipe(text_list, batch_size=500, n_process=-1):
             lemmas = [token.lemma_ for token in doc]
             lemmatized.append(" ".join(lemmas))
-
-        logging.info("[SPACY] Lemmatization completed.")
         return lemmatized
-
     except Exception as e:
-        logging.error("[SPACY] Lemmatization failed.")
         raise CustomException(e, sys)
 
 
-def spacy_tokenize_pipe(text_list):
+def spacy_tokenize_pipe(text_list: list) -> list:
     """
-    Tokenize text documents using spaCy's batched pipeline.
+    Tokenize text using spaCy.
 
     Parameters
     ----------
     text_list : list of str
-        Input text documents.
+        List of input documents.
 
     Returns
     -------
     list of list of str
-        Tokenized documents where each document is represented as a list of tokens.
+        Tokenized documents.
 
     Raises
     ------
@@ -280,17 +243,9 @@ def spacy_tokenize_pipe(text_list):
         If tokenization fails.
     """
     try:
-        logging.info("[SPACY] Tokenizing text using nlp.pipe.")
-
-        nlp = spacy.load("en_core_web_sm")
         tokenized = []
-
         for doc in nlp.pipe(text_list, batch_size=500, n_process=-1):
             tokenized.append([token.text for token in doc])
-
-        logging.info("[SPACY] Tokenization completed.")
         return tokenized
-
     except Exception as e:
-        logging.error("[SPACY] Tokenization failed.")
         raise CustomException(e, sys)
